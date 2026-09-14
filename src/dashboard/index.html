@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Swap Monitor — DEPIX → USDG</title>
+  <meta name="description" content="Monitor de cotações DEPIX (Liquid) para USDG (Arbitrum) comparando SideShift e DeFlow" />
+  <link rel="stylesheet" href="style.css" />
+  <!-- Chart.js via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/date-fns@3.6.0/cdn.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body>
+
+<!-- ── HEADER ──────────────────────────────────────────── -->
+<header>
+  <div class="container">
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-icon">📊</div>
+        <div>
+          <div class="logo-text">Swap Monitor</div>
+          <div class="logo-sub">DEPIX (Liquid) → USDG (Arbitrum)</div>
+        </div>
+      </div>
+      <div class="header-status">
+        <span id="mock-badge" class="mock-badge" style="display:none">MOCK</span>
+        <div class="status-dot" id="status-dot"></div>
+        <span id="status-text">conectando...</span>
+        <button id="theme-toggle" class="theme-btn" title="Alternar tema" aria-label="Alternar tema claro/escuro">
+          <span class="theme-icon">🌙</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ── TOAST ───────────────────────────────────────────── -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- ── MAIN ────────────────────────────────────────────── -->
+<main>
+  <div class="container">
+
+    <!-- Best Provider Banner -->
+    <div id="best-banner" class="best-banner mb-24" style="display:none">
+      <div class="best-trophy">🥇</div>
+      <div>
+        <div class="best-title">Melhor Opção Agora</div>
+        <div class="best-provider-name" id="best-provider-name">—</div>
+        <div class="best-amount" id="best-provider-amount">—</div>
+      </div>
+      <div class="best-diff" id="best-diff-section" style="display:none">
+        <div class="diff-value" id="best-diff-value">—</div>
+        <div class="diff-label" id="best-diff-label">vs. outro provedor</div>
+      </div>
+    </div>
+
+    <!-- Provider Cards -->
+    <p class="section-title">Cotações</p>
+    <div class="cards-grid" id="cards-grid">
+      <!-- Gerado via JS -->
+      <div class="provider-card">
+        <div class="skeleton" style="width:120px;height:16px;margin-bottom:20px"></div>
+        <div class="skeleton" style="height:40px;margin-bottom:12px"></div>
+        <div class="skeleton" style="height:80px"></div>
+      </div>
+      <div class="provider-card">
+        <div class="skeleton" style="width:120px;height:16px;margin-bottom:20px"></div>
+        <div class="skeleton" style="height:40px;margin-bottom:12px"></div>
+        <div class="skeleton" style="height:80px"></div>
+      </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="chart-section mb-24">
+      <div class="chart-header">
+        <div class="chart-title">📈 Histórico de Cotações</div>
+        <div class="time-filters">
+          <button class="time-btn active" data-hours="1"  id="btn-1h">1h</button>
+          <button class="time-btn"        data-hours="6"  id="btn-6h">6h</button>
+          <button class="time-btn"        data-hours="24" id="btn-24h">24h</button>
+          <button class="time-btn"        data-hours="168" id="btn-7d">7d</button>
+          <button class="time-btn"        data-hours="720" id="btn-30d">30d</button>
+        </div>
+      </div>
+      <div class="chart-container">
+        <canvas id="quoteChart"></canvas>
+        <div class="chart-empty" id="chart-empty" style="display:none">
+          <span class="icon">📡</span>
+          Coletando histórico...
+        </div>
+      </div>
+    </div>
+
+    <!-- History Table -->
+    <div class="history-section">
+      <div class="history-title">🕐 Histórico de Consultas</div>
+      <div class="history-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Hora</th>
+              <th>SideShift (USDG)</th>
+              <th>DeFlow (USDG)</th>
+              <th>Melhor</th>
+            </tr>
+          </thead>
+          <tbody id="history-tbody">
+            <tr><td colspan="4" class="muted-cell" style="text-align:center;padding:24px">Aguardando dados...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- ── FOOTER ───────────────────────────────────────────── -->
+<div class="footer-bar">
+  <div class="footer-inner">
+    <div class="footer-info">
+      <span>Atualizado: <strong id="last-updated">—</strong></span>
+      <span class="text-muted">·</span>
+      <span class="next-update">
+        Próxima: <span class="countdown" id="countdown">—</span>
+      </span>
+    </div>
+    <div class="footer-disclaimer">
+      ⚠️ Apenas monitoramento · Nenhuma transação é executada
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
