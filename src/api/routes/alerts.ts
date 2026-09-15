@@ -9,8 +9,9 @@ router.get('/status', (_req, res) => {
   res.json({
     enabled: config.telegram.enabled,
     configured: Boolean(config.telegram.botToken && config.telegram.chatId),
-    alertScoreThreshold: config.telegram.alertScoreThreshold,
-    alertDiffThreshold: config.telegram.alertDiffThreshold,
+    cooldownMinutes: config.telegram.cooldownMinutes,
+    minImprovementPercent: config.telegram.minImprovementPercent,
+    historyHours: config.telegram.historyHours,
   });
 });
 

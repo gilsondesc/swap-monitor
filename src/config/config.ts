@@ -58,8 +58,10 @@ export const config = {
     // Tokens nunca aparecem em logs
     botToken: process.env['TELEGRAM_BOT_TOKEN'] ?? '',
     chatId: process.env['TELEGRAM_CHAT_ID'] ?? '',
-    alertScoreThreshold: num('TELEGRAM_ALERT_SCORE_THRESHOLD', 80),
-    alertDiffThreshold: num('TELEGRAM_ALERT_DIFF_THRESHOLD', 0.30),
+    // Radar de Oportunidades — parâmetros de decisão
+    cooldownMinutes: num('TELEGRAM_COOLDOWN_MINUTES', 120),
+    minImprovementPercent: num('TELEGRAM_MIN_IMPROVEMENT_PERCENT', 0.5),
+    historyHours: num('TELEGRAM_HISTORY_HOURS', 24),
   },
 
   // Ativos monitorados

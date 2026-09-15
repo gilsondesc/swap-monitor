@@ -1,18 +1,15 @@
-// src/services/quote-monitor.ts
 import { config } from '../config/config';
 import { fetchSideShiftQuote } from '../providers/sideshift/client';
 import { fetchDeFlowQuote } from '../providers/deflow/client';
 import { getMockSideShiftQuote, getMockDeFlowQuote } from '../mock/mock-provider';
 import { insertQuote, updateProviderStatus } from '../database/db';
 import { compareBestProvider } from './comparison.service';
-import { getAllProvidersStats } from './statistics.service';
-import { sendTelegramAlert } from '../alerts/telegram';
-import { calculateScore } from './scoring.service';
+import { getAllProvidersStats, getProviderStats } from './statistics.service';
+import { evaluateAndSendOpportunityAlert } from '../alerts/telegram';
 import { logger } from '../utils/logger';
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let pollingInProgress = false;
-const lastAlertTimestamps: Record<string, number> = {};
 
 export function isPolling(): boolean {
   return pollingInProgress;
@@ -133,59 +130,14 @@ export async function collectQuotes(): Promise<void> {
     }
   }
 
-  // ---- Alertas Telegram ----
-  if (config.telegram.enabled) {
-    const srcAsset = config.swap.source.asset;
-    const destAsset = config.swap.destination.asset;
-    const now = Date.now();
-
-    for (const s of stats) {
-      if (s.latest_quoted_amount === null) continue;
-      const scoreResult = calculateScore(
-        s.latest_quoted_amount,
-        s.average_1h,
-        s.average_6h,
-        s.average_24h,
-        s.best_24h,
-      );
-
-      // Dispara alerta se score atingir o limite e respeitar cooldown de 15 min
-      if (scoreResult.score >= config.telegram.alertScoreThreshold) {
-        const key = `score_${s.provider}`;
-        if (!lastAlertTimestamps[key] || now - lastAlertTimestamps[key] > 15 * 60 * 1000) {
-          lastAlertTimestamps[key] = now;
-          const rate = s.latest_quoted_amount / amount;
-          const msg = `🚨 <b>OPORTUNIDADE DE SWAP DETECTADA!</b>\n\n` +
-            `🏛️ Provedor: <b>${s.provider === 'sideshift' ? 'SideShift' : 'DeFlow'}</b>\n` +
-            `⭐️ Score: <b>${scoreResult.score}/100</b> (${scoreResult.emoji} ${scoreResult.label})\n` +
-            `💰 Você recebe: <b>${s.latest_quoted_amount.toFixed(2)} ${destAsset}</b>\n` +
-            `🔄 Por: <b>${amount.toLocaleString('pt-BR')} ${srcAsset}</b>\n` +
-            `📈 Taxa: <code>1 ${srcAsset} = ${rate.toFixed(6)} ${destAsset}</code>\n` +
-            (s.average_24h ? `📊 Média 24h: <code>${s.average_24h.toFixed(2)} ${destAsset}</code>\n` : '') +
-            (s.best_24h ? `🏆 Melhor 24h: <code>${s.best_24h.toFixed(2)} ${destAsset}</code>\n` : '') +
-            `\n⏱️ <i>${new Date().toLocaleTimeString('pt-BR')}</i> — Swap Monitor`;
-
-          await sendTelegramAlert(msg);
-        }
-      }
-    }
-
-    if (
-      comparison.provider_difference_pct !== null &&
-      Math.abs(comparison.provider_difference_pct) >= config.telegram.alertDiffThreshold
-    ) {
-      const key = `diff_${comparison.best_provider}`;
-      if (!lastAlertTimestamps[key] || now - lastAlertTimestamps[key] > 15 * 60 * 1000) {
-        lastAlertTimestamps[key] = now;
-        const msg = `⚡ <b>DIFERENÇA ENTRE PROVEDORES!</b>\n\n` +
-          `🏆 Melhor opção: <b>${comparison.best_provider === 'sideshift' ? 'SideShift' : 'DeFlow'}</b>\n` +
-          `💰 Cotação: <b>${comparison.best_quoted_amount?.toFixed(2)} ${destAsset}</b>\n` +
-          `📊 Vantagem: <b>${comparison.provider_difference_label}</b>\n` +
-          `\n⏱️ <i>${new Date().toLocaleTimeString('pt-BR')}</i> — Swap Monitor`;
-
-        await sendTelegramAlert(msg);
-      }
-    }
+  // ---- Alertas Telegram (Radar de Oportunidades) ----
+  // Avalia e envia alerta apenas para SideShift (provider ativo).
+  // A função é tolerante a falhas: nunca derruba o monitor.
+  if (config.sideshift.enabled || config.mockMode) {
+    const sideshiftStats = getProviderStats('sideshift');
+    evaluateAndSendOpportunityAlert('sideshift', sideshiftStats).catch((err) => {
+      logger.error('[TELEGRAM] erro inesperado no avaliador:', err);
+    });
   }
 
   logger.info(`[MONITOR] próxima atualização em ${config.quoteIntervalSeconds}s`);

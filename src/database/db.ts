@@ -9,6 +9,8 @@ import {
   CREATE_QUOTES_TABLE,
   CREATE_EXECUTIONS_MANUAL_TABLE,
   CREATE_INDEXES,
+  CREATE_TELEGRAM_ALERT_STATE_TABLE,
+  CREATE_TELEGRAM_ALERT_STATE_INDEX,
 } from './schema';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -53,9 +55,11 @@ function runMigrations(db: DatabaseSync): void {
   db.exec(CREATE_PROVIDERS_TABLE);
   db.exec(CREATE_QUOTES_TABLE);
   db.exec(CREATE_EXECUTIONS_MANUAL_TABLE);
+  db.exec(CREATE_TELEGRAM_ALERT_STATE_TABLE);
   for (const idx of CREATE_INDEXES) {
     db.exec(idx);
   }
+  db.exec(CREATE_TELEGRAM_ALERT_STATE_INDEX);
   seedProviders(db);
 }
 
@@ -193,4 +197,77 @@ export function closeDb(): void {
     _db.close();
     _db = null;
   }
+}
+
+// ----------------------------------------------------------------
+// Estado do Radar de Alertas Telegram
+// ----------------------------------------------------------------
+
+export interface TelegramAlertStateRow {
+  provider: string;
+  source_asset: string;
+  source_network: string;
+  destination_asset: string;
+  destination_network: string;
+  /** quoted_amount da cotação que originou o último alerta enviado */
+  last_alert_rate: number | null;
+  /** ISO 8601 timestamp do último alerta enviado; null se nunca enviou */
+  last_alert_at: string | null;
+}
+
+/**
+ * Recupera o estado persistido de alerta para um provider+par.
+ * Retorna null se ainda não há registro (primeira execução).
+ */
+export function getTelegramAlertState(
+  provider: string,
+  sourceAsset: string,
+  sourceNetwork: string,
+  destinationAsset: string,
+  destinationNetwork: string,
+): TelegramAlertStateRow | null {
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT provider, source_asset, source_network,
+           destination_asset, destination_network,
+           last_alert_rate, last_alert_at
+    FROM telegram_alert_state
+    WHERE provider = ?
+      AND source_asset = ?
+      AND source_network = ?
+      AND destination_asset = ?
+      AND destination_network = ?
+  `).get(provider, sourceAsset, sourceNetwork, destinationAsset, destinationNetwork);
+
+  return (row as TelegramAlertStateRow | undefined) ?? null;
+}
+
+/**
+ * Insere ou atualiza o estado de alerta para um provider+par.
+ * Chamado tanto ao inicializar o estado (sem envio) quanto após envio real.
+ */
+export function upsertTelegramAlertState(
+  state: TelegramAlertStateRow,
+): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO telegram_alert_state (
+      provider, source_asset, source_network,
+      destination_asset, destination_network,
+      last_alert_rate, last_alert_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(provider, source_asset, source_network, destination_asset, destination_network)
+    DO UPDATE SET
+      last_alert_rate = excluded.last_alert_rate,
+      last_alert_at   = excluded.last_alert_at,
+      updated_at      = datetime('now')
+  `).run(
+    state.provider,
+    state.source_asset,
+    state.source_network,
+    state.destination_asset,
+    state.destination_network,
+    state.last_alert_rate,
+    state.last_alert_at,
+  );
 }
