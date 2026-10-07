@@ -8,7 +8,7 @@ let quoteInterval = 300; // segundos, atualizado via /api/config
 let countdownTimer = null;
 let secondsLeft = 300;
 let comparisonData = null;
-let targetCurrency = 'USDC';
+let targetCurrency = 'USDG';
 let sourceCurrency = 'DEPIX';
 
 // ── Formatação ────────────────────────────────────────────
@@ -76,20 +76,31 @@ function scoreColor(score) {
 
 // ── Renderização de cards ──────────────────────────────────
 
-function renderCard(providerData, isBest) {
-  const { provider, latest_quoted_amount, effective_rate,
+// ── Renderização de cards ──────────────────────────────────
+
+function renderCard(data, isBest) {
+  const { provider, destination_network, destination_asset,
+          latest_quoted_amount, effective_rate,
+          minimum_amount, maximum_amount,
           average_1h, average_6h, average_24h,
           best_24h, worst_24h,
           difference_vs_average_24h, difference_vs_best_24h,
-          score, count } = providerData;
+          score, count } = data;
 
-  const name = providerLabel(provider);
+  const netName = destination_network
+    ? destination_network.charAt(0).toUpperCase() + destination_network.slice(1)
+    : '';
+  const cardTitle = netName ? `USDG / ${netName}` : providerLabel(provider);
+  const cardSubtitle = provider === 'sideshift' ? 'SideShift' : providerLabel(provider);
 
   // Status
   let statusClass = 'badge-unknown';
   let statusLabel = 'Desconhecido';
 
-  if (score && latest_quoted_amount != null) {
+  if (isBest && latest_quoted_amount != null) {
+    statusClass = 'badge-online';
+    statusLabel = 'Melhor Cotação';
+  } else if (score && latest_quoted_amount != null) {
     statusClass = 'badge-online';
     statusLabel = 'Online';
   } else if (score === null && count === 0) {
@@ -100,11 +111,7 @@ function renderCard(providerData, isBest) {
     statusLabel = 'Indisponível';
   }
 
-  // Se o provider é DeFlow e não há dados — detecta suspension pelo erro
-  const isDeflowSuspended = provider === 'deflow' && (count === 0 || latest_quoted_amount == null);
-  const isSuspended = isDeflowSuspended; // futuro: checar campo status retornado pela API
-
-  // Ajusta badge para suspenso
+  const isSuspended = provider === 'deflow' && (count === 0 || latest_quoted_amount == null);
   if (isSuspended) {
     statusClass = 'badge-suspended';
     statusLabel = 'Suspenso';
@@ -120,10 +127,16 @@ function renderCard(providerData, isBest) {
   const scoreObj = score || {};
   const scoreVal = scoreObj.score;
   const scoreLabel = scoreObj.label || '—';
-  const scoreDesc = scoreObj.description || '';
 
   const pctVsAvg = difference_vs_average_24h;
   const pctClass = pctVsAvg == null ? 'muted' : pctVsAvg >= 0 ? 'positive' : 'negative';
+
+  const minMaxLine = minimum_amount != null || maximum_amount != null
+    ? `<div class="amount-limits" style="font-size:11px;color:var(--text-muted);margin-top:4px">
+        ${minimum_amount != null ? `Mín: ${fmt(minimum_amount, 2)}` : ''}
+        ${maximum_amount != null ? ` · Máx: ${fmt(maximum_amount, 2)}` : ''} DEPIX
+       </div>`
+    : '';
 
   const mainContent = isSuspended
     ? `<div class="suspended-message">
@@ -135,29 +148,30 @@ function renderCard(providerData, isBest) {
     ? `<div class="error-message">❌ Sem cotação disponível</div>`
     : `
       <div class="card-main-amount">
-        <div class="amount-label">1.000 ${sourceCurrency}</div>
+        <div class="amount-label">1.000 ${sourceCurrency} →</div>
         <div class="amount-value">
-          ${fmt(latest_quoted_amount)}<span class="amount-currency">${targetCurrency}</span>
+          ${fmt(latest_quoted_amount, 4)}<span class="amount-currency">${destination_asset || targetCurrency}</span>
         </div>
         <div class="amount-rate monospace">Rate: ${fmtRate(effective_rate || (latest_quoted_amount / 1000))}</div>
+        ${minMaxLine}
       </div>
       <div class="card-divider"></div>
       <div class="card-stats">
         <div class="stat-item">
           <span class="stat-label">Média 1h</span>
-          <span class="stat-value">${fmt(average_1h)}</span>
+          <span class="stat-value">${fmt(average_1h, 4)}</span>
         </div>
         <div class="stat-item">
           <span class="stat-label">Média 6h</span>
-          <span class="stat-value">${fmt(average_6h)}</span>
+          <span class="stat-value">${fmt(average_6h, 4)}</span>
         </div>
         <div class="stat-item">
           <span class="stat-label">Média 24h</span>
-          <span class="stat-value">${fmt(average_24h)}</span>
+          <span class="stat-value">${fmt(average_24h, 4)}</span>
         </div>
         <div class="stat-item">
           <span class="stat-label">Melhor 24h</span>
-          <span class="stat-value">${fmt(best_24h)}</span>
+          <span class="stat-value">${fmt(best_24h, 4)}</span>
         </div>
         <div class="stat-item">
           <span class="stat-label">vs Média 24h</span>
@@ -182,7 +196,10 @@ function renderCard(providerData, isBest) {
   return `
     <div class="${cardClass}">
       <div class="card-header">
-        <div class="provider-name">${name}</div>
+        <div>
+          <div class="provider-name">${cardTitle}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${cardSubtitle}</div>
+        </div>
         <span class="provider-badge ${statusClass}">${statusLabel}</span>
       </div>
       ${mainContent}
@@ -194,23 +211,29 @@ function renderCard(providerData, isBest) {
 
 function renderBestBanner(comparison) {
   const banner = document.getElementById('best-banner');
-  if (!comparison || !comparison.best_provider) {
+  if (!comparison || (!comparison.best_route && !comparison.best_quoted_amount)) {
     banner.style.display = 'none';
     return;
   }
+
   banner.style.display = 'flex';
-  document.getElementById('best-provider-name').textContent =
-    providerLabel(comparison.best_provider);
+
+  const bestName = comparison.best_label ||
+    (comparison.best_network ? `SideShift — ${comparison.best_network.charAt(0).toUpperCase() + comparison.best_network.slice(1)}` : providerLabel(comparison.best_provider));
+
+  document.getElementById('best-provider-name').textContent = bestName;
   document.getElementById('best-provider-amount').textContent =
-    `${fmt(comparison.best_quoted_amount)} ${targetCurrency}`;
+    `1.000 ${sourceCurrency} → ${fmt(comparison.best_quoted_amount, 6)} ${targetCurrency}`;
 
   const diffSection = document.getElementById('best-diff-section');
-  if (comparison.provider_difference_pct != null && comparison.second_provider) {
+  if (comparison.provider_difference_pct != null && (comparison.second_route || comparison.second_provider)) {
     diffSection.style.display = 'block';
     document.getElementById('best-diff-value').textContent =
       `+${Number(comparison.provider_difference_pct).toFixed(2)}%`;
-    document.getElementById('best-diff-label').textContent =
-      `vs ${providerLabel(comparison.second_provider)}`;
+    const vsLabel = comparison.second_route?.destination_network
+      ? `vs ${comparison.second_route.destination_network.charAt(0).toUpperCase() + comparison.second_route.destination_network.slice(1)}`
+      : `vs ${providerLabel(comparison.second_provider)}`;
+    document.getElementById('best-diff-label').textContent = vsLabel;
   } else {
     diffSection.style.display = 'none';
   }
@@ -225,13 +248,19 @@ async function fetchComparison() {
     const data = await res.json();
     comparisonData = data;
 
-    const bestProvider = data.comparison?.best_provider;
-    renderBestBanner(data.comparison);
+    const comp = data.routeComparison || data.comparison;
+    renderBestBanner(comp);
+
+    const items = (data.routes && data.routes.length > 0) ? data.routes : (data.providers || []);
+    const bestKey = comp?.best_route?.route_key || comp?.best_network;
 
     // Renderizar cards
     const grid = document.getElementById('cards-grid');
-    grid.innerHTML = (data.providers || [])
-      .map((p) => renderCard(p, p.provider === bestProvider))
+    grid.innerHTML = items
+      .map((item) => {
+        const isBest = item.route_key ? (item.route_key === bestKey) : (item.provider === comp?.best_provider);
+        return renderCard(item, isBest);
+      })
       .join('');
 
     // Header status
@@ -249,9 +278,11 @@ async function fetchComparison() {
 
 // ── Fetch histórico (tabela) ────────────────────────────────
 
+// ── Fetch histórico (tabela) ────────────────────────────────
+
 async function fetchHistoryTable() {
   try {
-    const res = await fetch(`${API}/api/quotes/history?hours=24&limit=30`);
+    const res = await fetch(`${API}/api/quotes/history?hours=24&limit=60`);
     const data = await res.json();
     const rows = data.history || [];
 
@@ -260,37 +291,48 @@ async function fetchHistoryTable() {
     for (const r of rows) {
       const key = r.observed_at ? r.observed_at.substring(0, 16) : 'unknown';
       if (!byMinute[key]) byMinute[key] = {};
-      byMinute[key][r.provider] = r;
+      const routeKey = r.destination_network ? r.destination_network.toLowerCase() : r.provider;
+      byMinute[key][routeKey] = r;
     }
 
     const sorted = Object.entries(byMinute).sort(([a], [b]) => b.localeCompare(a)).slice(0, 20);
 
     const tbody = document.getElementById('history-tbody');
     if (sorted.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="4" class="muted-cell" style="text-align:center;padding:24px">Aguardando dados...</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" class="muted-cell" style="text-align:center;padding:24px">Aguardando dados...</td></tr>`;
       return;
     }
 
-    tbody.innerHTML = sorted.map(([ts, providers]) => {
-      const ss = providers['sideshift'];
-      const df = providers['deflow'];
-      const ssAmt = ss?.quoted_amount;
-      const dfAmt = df?.quoted_amount;
+    tbody.innerHTML = sorted.map(([ts, routes]) => {
+      const eth = routes['ethereum']?.quoted_amount;
+      const sol = routes['solana']?.quoted_amount;
+      const rob = routes['robinhood']?.quoted_amount;
 
-      let best = '—';
-      let ssCls = '', dfCls = '';
-      if (ssAmt != null && dfAmt != null) {
-        if (ssAmt > dfAmt) { best = 'SideShift'; ssCls = 'best-cell'; }
-        else if (dfAmt > ssAmt) { best = 'DeFlow'; dfCls = 'best-cell'; }
-        else { best = 'Igual'; ssCls = dfCls = 'best-cell'; }
-      } else if (ssAmt != null) { best = 'SideShift'; ssCls = 'best-cell'; }
-      else if (dfAmt != null)   { best = 'DeFlow';    dfCls = 'best-cell'; }
+      // Determina a melhor rota
+      const amounts = [
+        { name: 'Ethereum', val: eth },
+        { name: 'Solana', val: sol },
+        { name: 'Robinhood', val: rob },
+      ].filter(a => a.val != null);
+
+      let bestName = '—';
+      let maxVal = -1;
+      if (amounts.length > 0) {
+        amounts.sort((a, b) => b.val - a.val);
+        bestName = amounts[0].name;
+        maxVal = amounts[0].val;
+      }
+
+      const ethCls = (eth != null && eth === maxVal) ? 'best-cell' : '';
+      const solCls = (sol != null && sol === maxVal) ? 'best-cell' : '';
+      const robCls = (rob != null && rob === maxVal) ? 'best-cell' : '';
 
       return `<tr>
         <td>${fmtTime(ts + ':00Z')}</td>
-        <td class="${ssCls}">${fmt(ssAmt)}</td>
-        <td class="${dfCls}">${dfAmt != null ? fmt(dfAmt) : '<span class="muted-cell">—</span>'}</td>
-        <td class="best-cell">${best}</td>
+        <td class="${ethCls}">${eth != null ? fmt(eth, 4) : '<span class="muted-cell">—</span>'}</td>
+        <td class="${solCls}">${sol != null ? fmt(sol, 4) : '<span class="muted-cell">—</span>'}</td>
+        <td class="${robCls}">${rob != null ? fmt(rob, 4) : '<span class="muted-cell">—</span>'}</td>
+        <td class="best-cell">${bestName}</td>
       </tr>`;
     }).join('');
 
@@ -307,15 +349,17 @@ async function fetchAndRenderChart(hours) {
     const data = await res.json();
     const rows = data.history || [];
 
-    const ssPoints = rows.filter(r => r.provider === 'sideshift' && r.quoted_amount != null)
+    const ethPoints = rows.filter(r => (r.destination_network === 'ethereum' || (!r.destination_network && r.provider === 'sideshift')) && r.quoted_amount != null)
       .map(r => ({ x: new Date(r.observed_at), y: r.quoted_amount })).reverse();
-    const dfPoints = rows.filter(r => r.provider === 'deflow' && r.quoted_amount != null)
+    const solPoints = rows.filter(r => r.destination_network === 'solana' && r.quoted_amount != null)
+      .map(r => ({ x: new Date(r.observed_at), y: r.quoted_amount })).reverse();
+    const robPoints = rows.filter(r => r.destination_network === 'robinhood' && r.quoted_amount != null)
       .map(r => ({ x: new Date(r.observed_at), y: r.quoted_amount })).reverse();
 
     const chartEmpty = document.getElementById('chart-empty');
     const canvas = document.getElementById('quoteChart');
 
-    if (ssPoints.length === 0 && dfPoints.length === 0) {
+    if (ethPoints.length === 0 && solPoints.length === 0 && robPoints.length === 0) {
       canvas.style.display = 'none';
       chartEmpty.style.display = 'flex';
       return;
@@ -324,32 +368,51 @@ async function fetchAndRenderChart(hours) {
     canvas.style.display = 'block';
     chartEmpty.style.display = 'none';
 
-    const chartData = {
-      datasets: [
-        {
-          label: 'SideShift',
-          data: ssPoints,
-          borderColor: '#6366f1',
-          backgroundColor: 'rgba(99,102,241,0.1)',
-          borderWidth: 2,
-          pointRadius: 3,
-          pointHoverRadius: 5,
-          fill: true,
-          tension: 0.3,
-        },
-        {
-          label: 'DeFlow',
-          data: dfPoints,
-          borderColor: '#10b981',
-          backgroundColor: 'rgba(16,185,129,0.08)',
-          borderWidth: 2,
-          pointRadius: 3,
-          pointHoverRadius: 5,
-          fill: true,
-          tension: 0.3,
-        },
-      ],
-    };
+    const datasets = [];
+
+    if (robPoints.length > 0 || (ethPoints.length > 0 && solPoints.length > 0)) {
+      datasets.push({
+        label: 'Robinhood',
+        data: robPoints,
+        borderColor: '#f59e0b',
+        backgroundColor: 'rgba(245,158,11,0.08)',
+        borderWidth: 2,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        fill: false,
+        tension: 0.3,
+      });
+    }
+
+    if (solPoints.length > 0 || (ethPoints.length > 0 && robPoints.length > 0)) {
+      datasets.push({
+        label: 'Solana',
+        data: solPoints,
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16,185,129,0.08)',
+        borderWidth: 2,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        fill: false,
+        tension: 0.3,
+      });
+    }
+
+    if (ethPoints.length > 0) {
+      datasets.push({
+        label: 'Ethereum',
+        data: ethPoints,
+        borderColor: '#6366f1',
+        backgroundColor: 'rgba(99,102,241,0.08)',
+        borderWidth: 2,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        fill: false,
+        tension: 0.3,
+      });
+    }
+
+    const chartData = { datasets };
 
     if (chartInstance) {
       chartInstance.data = chartData;
@@ -377,7 +440,7 @@ async function fetchAndRenderChart(hours) {
               titleColor: '#f1f5f9',
               bodyColor: '#94a3b8',
               callbacks: {
-                label: (ctx) => ` ${ctx.dataset.label}: ${fmt(ctx.parsed.y)} ${targetCurrency}`,
+                label: (ctx) => ` ${ctx.dataset.label}: ${fmt(ctx.parsed.y, 4)} ${targetCurrency}`,
               },
             },
           },
@@ -393,7 +456,7 @@ async function fetchAndRenderChart(hours) {
               ticks: {
                 color: '#475569',
                 font: { size: 11, family: 'JetBrains Mono' },
-                callback: (v) => fmt(v),
+                callback: (v) => fmt(v, 2),
               },
             },
           },
@@ -403,20 +466,6 @@ async function fetchAndRenderChart(hours) {
   } catch (err) {
     console.error('Erro no gráfico:', err);
   }
-}
-
-// ── Config ──────────────────────────────────────────────────
-
-async function loadConfig() {
-  try {
-    const res = await fetch(`${API}/api/config`);
-    const data = await res.json();
-    quoteInterval = data.quoteIntervalSeconds ?? 300;
-
-    if (data.mockMode) {
-      document.getElementById('mock-badge').style.display = 'inline-block';
-    }
-  } catch (e) { /* silent */ }
 }
 
 // ── Countdown ───────────────────────────────────────────────
@@ -506,12 +555,14 @@ async function loadConfig() {
       sourceCurrency = data.swap.source?.asset || 'DEPIX';
       const sub = document.querySelector('.logo-sub');
       if (sub) {
-        sub.textContent = `${data.swap.source.asset} (${data.swap.source.network}) → ${data.swap.destination.asset} (${data.swap.destination.network})`;
+        sub.textContent = `${sourceCurrency} (Liquid) → ${targetCurrency} (Ethereum / Solana / Robinhood)`;
       }
       const th1 = document.querySelector('thead tr th:nth-child(2)');
-      if (th1) th1.textContent = `SideShift (${targetCurrency})`;
+      if (th1) th1.textContent = `Ethereum (${targetCurrency})`;
       const th2 = document.querySelector('thead tr th:nth-child(3)');
-      if (th2) th2.textContent = `DeFlow (${targetCurrency})`;
+      if (th2) th2.textContent = `Solana (${targetCurrency})`;
+      const th3 = document.querySelector('thead tr th:nth-child(4)');
+      if (th3) th3.textContent = `Robinhood (${targetCurrency})`;
     }
     const mockBadge = document.getElementById('mock-badge');
     if (mockBadge) {

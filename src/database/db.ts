@@ -152,40 +152,73 @@ export function updateProviderStatus(
 // Helpers de leitura
 // ----------------------------------------------------------------
 
+export interface QuotesHistoryFilter {
+  provider?: string;
+  network?: string;
+  asset?: string;
+}
+
 export function getLatestQuotes(): QuoteRow[] {
   const db = getDb();
   return db.prepare(`
     SELECT q.*
     FROM quotes q
     INNER JOIN (
-      SELECT provider, MAX(observed_at) AS max_observed
+      SELECT provider, destination_asset, destination_network, MAX(observed_at) AS max_observed
       FROM quotes
-      GROUP BY provider
-    ) latest ON q.provider = latest.provider AND q.observed_at = latest.max_observed
-    ORDER BY q.provider
+      GROUP BY provider, destination_asset, destination_network
+    ) latest ON q.provider = latest.provider
+            AND q.destination_asset = latest.destination_asset
+            AND q.destination_network = latest.destination_network
+            AND q.observed_at = latest.max_observed
+    ORDER BY q.provider, q.destination_network
   `).all() as unknown as QuoteRow[];
 }
 
 export function getQuotesHistory(
   hours: number,
-  provider?: string,
+  filterOrProvider?: string | QuotesHistoryFilter,
+  network?: string,
+  asset?: string,
 ): QuoteRow[] {
   const db = getDb();
   const since = new Date(Date.now() - hours * 3_600_000).toISOString();
 
-  if (provider) {
-    return db.prepare(`
-      SELECT * FROM quotes
-      WHERE provider = ? AND observed_at >= ? AND success = 1
-      ORDER BY observed_at DESC
-    `).all(provider, since) as unknown as QuoteRow[];
+  let targetProvider: string | undefined;
+  let targetNetwork: string | undefined = network;
+  let targetAsset: string | undefined = asset;
+
+  if (typeof filterOrProvider === 'string') {
+    targetProvider = filterOrProvider;
+  } else if (filterOrProvider && typeof filterOrProvider === 'object') {
+    targetProvider = filterOrProvider.provider;
+    targetNetwork = filterOrProvider.network ?? targetNetwork;
+    targetAsset = filterOrProvider.asset ?? targetAsset;
   }
 
-  return db.prepare(`
+  const conditions = ['observed_at >= ?', 'success = 1'];
+  const params: unknown[] = [since];
+
+  if (targetProvider) {
+    conditions.push('provider = ?');
+    params.push(targetProvider);
+  }
+  if (targetNetwork) {
+    conditions.push('destination_network = ?');
+    params.push(targetNetwork);
+  }
+  if (targetAsset) {
+    conditions.push('destination_asset = ?');
+    params.push(targetAsset);
+  }
+
+  const sql = `
     SELECT * FROM quotes
-    WHERE observed_at >= ? AND success = 1
+    WHERE ${conditions.join(' AND ')}
     ORDER BY observed_at DESC
-  `).all(since) as unknown as QuoteRow[];
+  `;
+
+  return db.prepare(sql).all(...params) as unknown as QuoteRow[];
 }
 
 export function getAllProviders() {

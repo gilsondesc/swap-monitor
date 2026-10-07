@@ -22,9 +22,29 @@ let callCount = 0;
 const SIDESHIFT_SEQUENCE = [187.10, 187.30, 187.42, 186.90, 187.85, 187.20, 188.01, 186.75];
 const DEFLOW_SEQUENCE    = [187.80, 188.10, 187.50, 188.20, 187.60, 188.35, 187.90, 188.50];
 
-export function getMockSideShiftQuote(amount: number): ParsedSideShiftQuote {
+export function getMockSideShiftQuote(
+  amount: number,
+  network = 'ethereum',
+  asset = 'USDG',
+): ParsedSideShiftQuote {
   const idx = callCount % SIDESHIFT_SEQUENCE.length;
-  const baseRate = SIDESHIFT_SEQUENCE[idx]! / 1000; // rate por DEPIX
+  let baseRate = SIDESHIFT_SEQUENCE[idx]! / 1000; // rate por DEPIX
+
+  // Pequenas variações realistas conforme a rede (Robinhood > Solana > Ethereum)
+  let minAmount = 43.20;
+  let maxAmount = 152118.0;
+
+  if (network === 'robinhood') {
+    baseRate = baseRate * 1.0035;
+    minAmount = 152.12;
+    maxAmount = 86529.75;
+  } else if (network === 'solana') {
+    baseRate = baseRate * 1.0032;
+    minAmount = 50.71;
+  } else if (network === 'ethereum') {
+    baseRate = baseRate * 1.0000;
+  }
+
   const rate = randomVariation(baseRate);
   const quotedAmount = parseFloat((rate * amount).toFixed(8));
 
@@ -33,13 +53,13 @@ export function getMockSideShiftQuote(amount: number): ParsedSideShiftQuote {
     success: true,
     depositCoin: 'DEPIX',
     depositNetwork: 'liquid',
-    settleCoin: 'USDG',
-    settleNetwork: 'arbitrum',
+    settleCoin: asset,
+    settleNetwork: network,
     sourceAmount: amount,
     quotedAmount,
     effectiveRate: rate,
-    minimumAmount: 10,
-    maximumAmount: 100000,
+    minimumAmount: minAmount,
+    maximumAmount: maxAmount,
     networkFee: null,
     serviceFee: null,
     quoteType: 'variable',
@@ -48,11 +68,11 @@ export function getMockSideShiftQuote(amount: number): ParsedSideShiftQuote {
       mock: true,
       depositCoin: 'DEPIX',
       depositNetwork: 'liquid',
-      settleCoin: 'USDG',
-      settleNetwork: 'arbitrum',
+      settleCoin: asset,
+      settleNetwork: network,
       rate: String(rate),
-      min: '10',
-      max: '100000',
+      min: String(minAmount),
+      max: String(maxAmount),
     }),
     observedAt: new Date().toISOString(),
   };

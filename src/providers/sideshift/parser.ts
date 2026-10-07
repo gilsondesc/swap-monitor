@@ -28,6 +28,8 @@ function safeNum(val: string | undefined | null): number | null {
 export function parsePairResponse(
   raw: unknown,
   sourceAmount: number,
+  targetNetwork = 'ethereum',
+  targetAsset = 'USDG',
 ): ParsedSideShiftQuote {
   const observedAt = new Date().toISOString();
 
@@ -41,8 +43,8 @@ export function parsePairResponse(
       error: raw.error.message ?? 'Erro desconhecido da SideShift',
       depositCoin: 'DEPIX',
       depositNetwork: 'liquid',
-      settleCoin: 'USDG',
-      settleNetwork: 'arbitrum',
+      settleCoin: targetAsset,
+      settleNetwork: targetNetwork,
       sourceAmount,
       quotedAmount: null,
       effectiveRate: null,
@@ -67,8 +69,8 @@ export function parsePairResponse(
     error: rate === null ? 'Rate não disponível na resposta' : undefined,
     depositCoin: data.depositCoin ?? 'DEPIX',
     depositNetwork: data.depositNetwork ?? 'liquid',
-    settleCoin: data.settleCoin ?? 'USDG',
-    settleNetwork: data.settleNetwork ?? 'arbitrum',
+    settleCoin: data.settleCoin ?? targetAsset,
+    settleNetwork: data.settleNetwork ?? targetNetwork,
     sourceAmount,
     quotedAmount,
     effectiveRate: rate,
@@ -90,6 +92,8 @@ export function parsePairResponse(
 export function parseQuoteResponse(
   raw: unknown,
   sourceAmount: number,
+  targetNetwork = 'ethereum',
+  targetAsset = 'USDG',
 ): ParsedSideShiftQuote {
   const observedAt = new Date().toISOString();
   const rawResponse = JSON.stringify(raw);
@@ -101,8 +105,8 @@ export function parseQuoteResponse(
       error: raw.error.message ?? 'Erro desconhecido da SideShift',
       depositCoin: 'DEPIX',
       depositNetwork: 'liquid',
-      settleCoin: 'USDG',
-      settleNetwork: 'arbitrum',
+      settleCoin: targetAsset,
+      settleNetwork: targetNetwork,
       sourceAmount,
       quotedAmount: null,
       effectiveRate: null,
@@ -128,8 +132,8 @@ export function parseQuoteResponse(
     error: settleAmount === null ? 'settleAmount não disponível' : undefined,
     depositCoin: data.depositCoin ?? 'DEPIX',
     depositNetwork: data.depositNetwork ?? 'liquid',
-    settleCoin: data.settleCoin ?? 'USDG',
-    settleNetwork: data.settleNetwork ?? 'arbitrum',
+    settleCoin: data.settleCoin ?? targetAsset,
+    settleNetwork: data.settleNetwork ?? targetNetwork,
     sourceAmount,
     quotedAmount: settleAmount,
     effectiveRate: rate ?? (settleAmount !== null ? settleAmount / sourceAmount : null),

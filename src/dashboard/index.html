@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Swap Monitor</title>
-  <meta name="description" content="Monitor de cotações DEPIX (Liquid) para USDG (Arbitrum) comparando SideShift e DeFlow" />
+  <meta name="description" content="Monitor de cotações DEPIX (Liquid) para USDG (Ethereum, Solana, Robinhood) via SideShift" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="stylesheet" href="style.css" />
   <!-- Chart.js via CDN -->
@@ -22,7 +22,7 @@
         <div class="logo-icon">📊</div>
         <div>
           <div class="logo-text">Swap Monitor</div>
-          <div class="logo-sub">DEPIX (Liquid) → USDG (Arbitrum)</div>
+          <div class="logo-sub">DEPIX (Liquid) → USDG (Ethereum / Solana / Robinhood)</div>
         </div>
       </div>
       <div class="header-status">
@@ -48,20 +48,25 @@
     <div id="best-banner" class="best-banner mb-24" style="display:none">
       <div class="best-trophy">🥇</div>
       <div>
-        <div class="best-title">Melhor Opção Agora</div>
+        <div class="best-title">Melhor Rota Agora</div>
         <div class="best-provider-name" id="best-provider-name">—</div>
         <div class="best-amount" id="best-provider-amount">—</div>
       </div>
       <div class="best-diff" id="best-diff-section" style="display:none">
         <div class="diff-value" id="best-diff-value">—</div>
-        <div class="diff-label" id="best-diff-label">vs. outro provedor</div>
+        <div class="diff-label" id="best-diff-label">vs. outra rota</div>
       </div>
     </div>
 
     <!-- Provider Cards -->
-    <p class="section-title">Cotações</p>
+    <p class="section-title">Rotas SideShift</p>
     <div class="cards-grid" id="cards-grid">
-      <!-- Gerado via JS -->
+      <!-- Gerado dinamicamente via JS -->
+      <div class="provider-card">
+        <div class="skeleton" style="width:120px;height:16px;margin-bottom:20px"></div>
+        <div class="skeleton" style="height:40px;margin-bottom:12px"></div>
+        <div class="skeleton" style="height:80px"></div>
+      </div>
       <div class="provider-card">
         <div class="skeleton" style="width:120px;height:16px;margin-bottom:20px"></div>
         <div class="skeleton" style="height:40px;margin-bottom:12px"></div>
@@ -103,13 +108,14 @@
           <thead>
             <tr>
               <th>Hora</th>
-              <th>SideShift (USDG)</th>
-              <th>DeFlow (USDG)</th>
-              <th>Melhor</th>
+              <th>Ethereum (USDG)</th>
+              <th>Solana (USDG)</th>
+              <th>Robinhood (USDG)</th>
+              <th>Melhor Rota</th>
             </tr>
           </thead>
           <tbody id="history-tbody">
-            <tr><td colspan="4" class="muted-cell" style="text-align:center;padding:24px">Aguardando dados...</td></tr>
+            <tr><td colspan="5" class="muted-cell" style="text-align:center;padding:24px">Aguardando dados...</td></tr>
           </tbody>
         </table>
       </div>

@@ -53,13 +53,29 @@ function buildHeaders(): Record<string, string> {
 // Endpoint: GET /v2/pair/:depositCoin-:depositNetwork/:settleCoin-:settleNetwork
 // Não requer autenticação — retorna rate, min, max
 // ----------------------------------------------------------------
-async function getPair(amount: number): Promise<ParsedSideShiftQuote> {
-  const { source, destination } = config.swap;
-  const from = `${source.asset}-${source.network}`;
-  const to = `${destination.asset}-${destination.network}`;
-  const url = `${config.sideshift.apiBaseUrl}/pair/${from}/${to}?amount=${amount}`;
+async function getPair(
+  amount: number,
+  targetNetwork = 'ethereum',
+  targetAsset = 'USDG',
+): Promise<ParsedSideShiftQuote> {
+  const source = config.swap.source;
+  const from = `${source.asset.toLowerCase()}-${source.network.toLowerCase()}`;
+  const to = `${targetAsset.toLowerCase()}-${targetNetwork.toLowerCase()}`;
 
-  console.log(`[${PROVIDER}] quote requested → ${url.replace(config.sideshift.apiKey || '__no_key__', '[REDACTED]')}`);
+  const affiliateParam = config.sideshift.affiliateId
+    ? `&affiliateId=${encodeURIComponent(config.sideshift.affiliateId)}`
+    : '';
+  const url = `${config.sideshift.apiBaseUrl}/pair/${from}/${to}?amount=${amount}${affiliateParam}`;
+
+  let loggedUrl = url;
+  if (config.sideshift.apiKey) {
+    loggedUrl = loggedUrl.replace(config.sideshift.apiKey, '[REDACTED]');
+  }
+  if (config.sideshift.affiliateId) {
+    loggedUrl = loggedUrl.replace(config.sideshift.affiliateId, '[REDACTED]');
+  }
+
+  console.log(`[${PROVIDER}] quote requested (${targetNetwork}) → ${loggedUrl}`);
 
   let raw: unknown;
   try {
@@ -67,15 +83,15 @@ async function getPair(amount: number): Promise<ParsedSideShiftQuote> {
     raw = await res.json();
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[${PROVIDER}] ERROR: ${msg}`);
+    console.error(`[${PROVIDER}] ERROR (${targetNetwork}): ${msg}`);
     return {
       provider: 'sideshift',
       success: false,
       error: msg,
       depositCoin: source.asset,
       depositNetwork: source.network,
-      settleCoin: destination.asset,
-      settleNetwork: destination.network,
+      settleCoin: targetAsset,
+      settleNetwork: targetNetwork,
       sourceAmount: amount,
       quotedAmount: null,
       effectiveRate: null,
@@ -90,32 +106,36 @@ async function getPair(amount: number): Promise<ParsedSideShiftQuote> {
     };
   }
 
-  const parsed = parsePairResponse(raw, amount);
+  const parsed = parsePairResponse(raw, amount, targetNetwork, targetAsset);
   if (parsed.success) {
-    console.log(`[${PROVIDER}] quote received: ${parsed.quotedAmount} ${destination.asset}`);
+    console.log(`[${PROVIDER}] quote received (${targetNetwork}): ${parsed.quotedAmount} ${targetAsset}`);
   } else {
-    console.warn(`[${PROVIDER}] quote failed: ${parsed.error}`);
+    console.warn(`[${PROVIDER}] quote failed (${targetNetwork}): ${parsed.error}`);
   }
   return parsed;
 }
 
 // ----------------------------------------------------------------
-// Endpoint: POST /v2/quotes (requer API key)
+// Endpoint: POST /v2/quotes (requer API key — apenas mantido se chamado explicitamente)
 // ----------------------------------------------------------------
-async function postQuote(amount: number): Promise<ParsedSideShiftQuote> {
-  const { source, destination } = config.swap;
+async function postQuote(
+  amount: number,
+  targetNetwork = 'ethereum',
+  targetAsset = 'USDG',
+): Promise<ParsedSideShiftQuote> {
+  const source = config.swap.source;
   const url = `${config.sideshift.apiBaseUrl}/quotes`;
 
   const body = {
     depositCoin: source.asset,
     depositNetwork: source.network,
-    settleCoin: destination.asset,
-    settleNetwork: destination.network,
+    settleCoin: targetAsset,
+    settleNetwork: targetNetwork,
     depositAmount: String(amount),
     ...(config.sideshift.affiliateId ? { affiliateId: config.sideshift.affiliateId } : {}),
   };
 
-  console.log(`[${PROVIDER}] fixed quote requested`);
+  console.log(`[${PROVIDER}] fixed quote requested (${targetNetwork})`);
 
   let raw: unknown;
   try {
@@ -127,15 +147,15 @@ async function postQuote(amount: number): Promise<ParsedSideShiftQuote> {
     raw = await res.json();
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[${PROVIDER}] ERROR (fixed quote): ${msg}`);
+    console.error(`[${PROVIDER}] ERROR (fixed quote ${targetNetwork}): ${msg}`);
     return {
       provider: 'sideshift',
       success: false,
       error: msg,
       depositCoin: source.asset,
       depositNetwork: source.network,
-      settleCoin: destination.asset,
-      settleNetwork: destination.network,
+      settleCoin: targetAsset,
+      settleNetwork: targetNetwork,
       sourceAmount: amount,
       quotedAmount: null,
       effectiveRate: null,
@@ -150,11 +170,11 @@ async function postQuote(amount: number): Promise<ParsedSideShiftQuote> {
     };
   }
 
-  const parsed = parseQuoteResponse(raw, amount);
+  const parsed = parseQuoteResponse(raw, amount, targetNetwork, targetAsset);
   if (parsed.success) {
-    console.log(`[${PROVIDER}] fixed quote received: ${parsed.quotedAmount} ${destination.asset}`);
+    console.log(`[${PROVIDER}] fixed quote received (${targetNetwork}): ${parsed.quotedAmount} ${targetAsset}`);
   } else {
-    console.warn(`[${PROVIDER}] fixed quote failed: ${parsed.error}`);
+    console.warn(`[${PROVIDER}] fixed quote failed (${targetNetwork}): ${parsed.error}`);
   }
   return parsed;
 }
@@ -162,7 +182,11 @@ async function postQuote(amount: number): Promise<ParsedSideShiftQuote> {
 // ----------------------------------------------------------------
 // Ponto de entrada principal do provider
 // ----------------------------------------------------------------
-export async function fetchSideShiftQuote(amount: number): Promise<ParsedSideShiftQuote> {
+export async function fetchSideShiftQuote(
+  amount: number,
+  targetNetwork = 'ethereum',
+  targetAsset = 'USDG',
+): Promise<ParsedSideShiftQuote> {
   if (!config.sideshift.enabled) {
     return {
       provider: 'sideshift',
@@ -170,8 +194,8 @@ export async function fetchSideShiftQuote(amount: number): Promise<ParsedSideShi
       error: 'Provider desabilitado',
       depositCoin: config.swap.source.asset,
       depositNetwork: config.swap.source.network,
-      settleCoin: config.swap.destination.asset,
-      settleNetwork: config.swap.destination.network,
+      settleCoin: targetAsset,
+      settleNetwork: targetNetwork,
       sourceAmount: amount,
       quotedAmount: null,
       effectiveRate: null,
@@ -186,13 +210,6 @@ export async function fetchSideShiftQuote(amount: number): Promise<ParsedSideShi
     };
   }
 
-  // Prefere cotação fixa se API key disponível
-  if (config.sideshift.apiKey) {
-    const fixed = await postQuote(amount);
-    if (fixed.success) return fixed;
-    // Fallback para cotação variável
-    console.log(`[${PROVIDER}] fallback para cotação variável`);
-  }
-
-  return getPair(amount);
+  // O endpoint consultivo GET /pair/:from/:to é o padrão para cotações variáveis
+  return getPair(amount, targetNetwork, targetAsset);
 }

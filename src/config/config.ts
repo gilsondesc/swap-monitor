@@ -64,6 +64,12 @@ export const config = {
     historyHours: num('TELEGRAM_HISTORY_HOURS', 24),
   },
 
+  // Redes e ativos monitorados
+  destinationNetworks: (process.env['DESTINATION_NETWORKS']
+    ?.split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean) ?? ['ethereum', 'solana', 'robinhood']),
+
   // Ativos monitorados
   swap: {
     source: {
@@ -72,7 +78,11 @@ export const config = {
     },
     destination: {
       asset: process.env['DESTINATION_ASSET'] ?? 'USDG',
-      network: process.env['DESTINATION_NETWORK'] ?? 'arbitrum',
+      network: process.env['DESTINATION_NETWORK'] ?? 'ethereum',
+      networks: (process.env['DESTINATION_NETWORKS']
+        ?.split(',')
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean) ?? ['ethereum', 'solana', 'robinhood']),
     },
   },
 

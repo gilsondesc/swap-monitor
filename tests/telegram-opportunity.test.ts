@@ -238,7 +238,8 @@ describe('evaluateAndSendOpportunityAlert — lógica de decisão', () => {
   it('Caso 6 — nova máxima durante cooldown: registra sem enviar', async () => {
     enableTelegram();
     // Alerta enviado há 60 min, rate=188.00; nova cotação = 190.00 (nova máxima)
-    mockGetState.mockReturnValue(stateWithAlert(188.0, 60));
+    const existingState = stateWithAlert(188.0, 60);
+    mockGetState.mockReturnValue(existingState);
 
     const stats = makeStats({ latest_quoted_amount: 190.0 });
     await evaluateAndSendOpportunityAlert('sideshift', stats);
@@ -248,7 +249,7 @@ describe('evaluateAndSendOpportunityAlert — lógica de decisão', () => {
     const upsertArg = mockUpsertState.mock.calls[0][0];
     expect(upsertArg.last_alert_rate).toBe(190.0);
     // last_alert_at deve ser o mesmo (não mudou — não foi envio real)
-    expect(upsertArg.last_alert_at).toBe(stateWithAlert(188.0, 60).last_alert_at);
+    expect(upsertArg.last_alert_at).toBe(existingState.last_alert_at);
     // Não fez fetch
     expect(mockFetch).not.toHaveBeenCalled();
   });

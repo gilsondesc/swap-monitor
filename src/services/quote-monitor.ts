@@ -3,8 +3,8 @@ import { fetchSideShiftQuote } from '../providers/sideshift/client';
 import { fetchDeFlowQuote } from '../providers/deflow/client';
 import { getMockSideShiftQuote, getMockDeFlowQuote } from '../mock/mock-provider';
 import { insertQuote, updateProviderStatus } from '../database/db';
-import { compareBestProvider } from './comparison.service';
-import { getAllProvidersStats, getProviderStats } from './statistics.service';
+import { compareBestRoute, compareBestProvider } from './comparison.service';
+import { getAllActiveRoutesStats, getAllProvidersStats, getProviderStats } from './statistics.service';
 import { evaluateAndSendOpportunityAlert } from '../alerts/telegram';
 import { logger } from '../utils/logger';
 
@@ -31,116 +31,143 @@ export async function collectQuotes(): Promise<void> {
 
   try {
     const amount = config.monitorAmount;
-    const results = [];
+    const networks = config.destinationNetworks;
+    const destAsset = config.swap.destination.asset;
+    const srcAsset = config.swap.source.asset;
+    const srcNetwork = config.swap.source.network;
 
-  // ---- SideShift ----
-  if (config.sideshift.enabled || config.mockMode) {
-    try {
-      const quote = config.mockMode
-        ? getMockSideShiftQuote(amount)
-        : await fetchSideShiftQuote(amount);
+    // ---- SideShift Multi-Rota (Ethereum, Solana, Robinhood) ----
+    if (config.sideshift.enabled || config.mockMode) {
+      const routePromises = networks.map(async (net) => {
+        try {
+          const quote = config.mockMode
+            ? getMockSideShiftQuote(amount, net, destAsset)
+            : await fetchSideShiftQuote(amount, net, destAsset);
 
-      insertQuote({
-        provider: 'sideshift',
-        source_asset: config.swap.source.asset,
-        source_network: config.swap.source.network,
-        destination_asset: config.swap.destination.asset,
-        destination_network: config.swap.destination.network,
-        source_amount: amount,
-        quoted_amount: quote.quotedAmount,
-        effective_rate: quote.effectiveRate,
-        minimum_amount: quote.minimumAmount,
-        maximum_amount: quote.maximumAmount,
-        network_fee: quote.networkFee,
-        service_fee: quote.serviceFee,
-        quote_type: quote.quoteType,
-        quote_id: quote.quoteId,
-        raw_response: quote.rawResponse,
-        success: quote.success ? 1 : 0,
-        error_message: quote.error ?? null,
-        observed_at: quote.observedAt,
+          insertQuote({
+            provider: 'sideshift',
+            source_asset: srcAsset,
+            source_network: srcNetwork,
+            destination_asset: destAsset,
+            destination_network: net,
+            source_amount: amount,
+            quoted_amount: quote.quotedAmount,
+            effective_rate: quote.effectiveRate,
+            minimum_amount: quote.minimumAmount,
+            maximum_amount: quote.maximumAmount,
+            network_fee: quote.networkFee,
+            service_fee: quote.serviceFee,
+            quote_type: quote.quoteType,
+            quote_id: quote.quoteId,
+            raw_response: quote.rawResponse,
+            success: quote.success ? 1 : 0,
+            error_message: quote.error ?? null,
+            observed_at: quote.observedAt,
+          });
+
+          return { network: net, success: quote.success, quotedAmount: quote.quotedAmount };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[SIDESHIFT] ERRO NA ROTA ${net}: ${msg}`);
+          insertQuote({
+            provider: 'sideshift',
+            source_asset: srcAsset,
+            source_network: srcNetwork,
+            destination_asset: destAsset,
+            destination_network: net,
+            source_amount: amount,
+            quoted_amount: null,
+            effective_rate: null,
+            minimum_amount: null,
+            maximum_amount: null,
+            network_fee: null,
+            service_fee: null,
+            quote_type: null,
+            quote_id: null,
+            raw_response: JSON.stringify({ error: msg }),
+            success: 0,
+            error_message: msg,
+          });
+          return { network: net, success: false, error: msg };
+        }
       });
+
+      const settled = await Promise.allSettled(routePromises);
+      const anySuccess = settled.some(
+        (s) => s.status === 'fulfilled' && s.value.success,
+      );
 
       updateProviderStatus(
         'sideshift',
-        quote.success ? 'online' : 'error',
-        quote.success ? null : (quote.error ?? 'Erro desconhecido'),
+        anySuccess ? 'online' : 'error',
+        anySuccess ? null : 'Falha na coleta de todas as rotas SideShift',
       );
-
-      results.push({ provider: 'sideshift', success: quote.success });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[SIDESHIFT] ERRO CRÍTICO: ${msg}`);
-      updateProviderStatus('sideshift', 'error', msg);
     }
-  }
 
-  // ---- DeFlow ----
-  if (config.deflow.enabled || config.mockMode) {
-    try {
-      const quote = config.mockMode
-        ? getMockDeFlowQuote(amount)
-        : await fetchDeFlowQuote(amount);
+    // ---- DeFlow (preservado como suspenso / desabilitado) ----
+    if (config.deflow.enabled || config.mockMode) {
+      try {
+        const quote = config.mockMode
+          ? getMockDeFlowQuote(amount)
+          : await fetchDeFlowQuote(amount);
 
-      const status =
-        quote.status === 'suspended'         ? 'suspended' :
-        quote.status === 'pending_validation' ? 'pending_validation' :
-        quote.status === 'disabled'           ? 'disabled' :
-        quote.success ? 'online' : 'error';
+        const status =
+          quote.status === 'suspended'          ? 'suspended' :
+          quote.status === 'pending_validation' ? 'pending_validation' :
+          quote.status === 'disabled'           ? 'disabled' :
+          quote.success ? 'online' : 'error';
 
-      insertQuote({
-        provider: 'deflow',
-        source_asset: config.swap.source.asset,
-        source_network: config.swap.source.network,
-        destination_asset: config.swap.destination.asset,
-        destination_network: config.swap.destination.network,
-        source_amount: amount,
-        quoted_amount: quote.quotedAmount,
-        effective_rate: quote.effectiveRate,
-        minimum_amount: quote.minimumAmount,
-        maximum_amount: quote.maximumAmount,
-        network_fee: quote.networkFee,
-        service_fee: quote.serviceFee,
-        quote_type: quote.quoteType,
-        quote_id: quote.quoteId,
-        raw_response: quote.rawResponse,
-        success: quote.success ? 1 : 0,
-        error_message: quote.error ?? null,
-        observed_at: quote.observedAt,
+        insertQuote({
+          provider: 'deflow',
+          source_asset: srcAsset,
+          source_network: srcNetwork,
+          destination_asset: destAsset,
+          destination_network: config.swap.destination.network,
+          source_amount: amount,
+          quoted_amount: quote.quotedAmount,
+          effective_rate: quote.effectiveRate,
+          minimum_amount: quote.minimumAmount,
+          maximum_amount: quote.maximumAmount,
+          network_fee: quote.networkFee,
+          service_fee: quote.serviceFee,
+          quote_type: quote.quoteType,
+          quote_id: quote.quoteId,
+          raw_response: quote.rawResponse,
+          success: quote.success ? 1 : 0,
+          error_message: quote.error ?? null,
+          observed_at: quote.observedAt,
+        });
+
+        updateProviderStatus('deflow', status, quote.success ? null : (quote.error ?? null));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[DEFLOW] ERRO CRÍTICO: ${msg}`);
+        updateProviderStatus('deflow', 'error', msg);
+      }
+    }
+
+    // ---- Comparação e Ranking das Rotas ----
+    const activeRouteStats = getAllActiveRoutesStats();
+    const routeComparison = compareBestRoute(activeRouteStats);
+
+    if (routeComparison.best_route) {
+      console.log(
+        `[COMPARE] melhor rota: ${routeComparison.best_label} (${routeComparison.best_quoted_amount} ${destAsset})`,
+      );
+      if (routeComparison.provider_difference_label) {
+        console.log(`[COMPARE] diferença: ${routeComparison.provider_difference_label}`);
+      }
+    }
+
+    // ---- Alertas Telegram (Radar de Oportunidades) ----
+    // Avalia a melhor rota do ciclo com cooldown e métricas próprias por rede.
+    if ((config.sideshift.enabled || config.mockMode) && routeComparison.best_route) {
+      evaluateAndSendOpportunityAlert(routeComparison.best_route).catch((err) => {
+        logger.error('[TELEGRAM] erro inesperado no avaliador:', err);
       });
-
-      updateProviderStatus('deflow', status, quote.success ? null : (quote.error ?? null));
-      results.push({ provider: 'deflow', success: quote.success });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[DEFLOW] ERRO CRÍTICO: ${msg}`);
-      updateProviderStatus('deflow', 'error', msg);
     }
-  }
 
-  // ---- Comparação e log ----
-  const providerNames = ['sideshift', 'deflow'];
-  const stats = getAllProvidersStats(providerNames);
-  const comparison = compareBestProvider(stats);
-
-  if (comparison.best_provider) {
-    console.log(`[COMPARE] best provider: ${comparison.best_provider} (${comparison.best_quoted_amount} USDG)`);
-    if (comparison.provider_difference_label) {
-      console.log(`[COMPARE] diferença: ${comparison.provider_difference_label}`);
-    }
-  }
-
-  // ---- Alertas Telegram (Radar de Oportunidades) ----
-  // Avalia e envia alerta apenas para SideShift (provider ativo).
-  // A função é tolerante a falhas: nunca derruba o monitor.
-  if (config.sideshift.enabled || config.mockMode) {
-    const sideshiftStats = getProviderStats('sideshift');
-    evaluateAndSendOpportunityAlert('sideshift', sideshiftStats).catch((err) => {
-      logger.error('[TELEGRAM] erro inesperado no avaliador:', err);
-    });
-  }
-
-  logger.info(`[MONITOR] próxima atualização em ${config.quoteIntervalSeconds}s`);
+    logger.info(`[MONITOR] próxima atualização em ${config.quoteIntervalSeconds}s`);
   } finally {
     pollingInProgress = false;
   }

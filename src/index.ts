@@ -7,7 +7,7 @@ import { logger } from './utils/logger';
 
 console.log('╔══════════════════════════════════════════╗');
 console.log('║         SWAP MONITOR  v1.0.0             ║');
-console.log('║   DEPIX (Liquid) → USDG (Arbitrum)      ║');
+console.log('║  DEPIX (Liquid) → USDG (ETH/SOL/RBH)     ║');
 console.log('║   Apenas monitoramento — sem execução    ║');
 console.log('╚══════════════════════════════════════════╝');
 console.log('');
