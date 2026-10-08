@@ -7,6 +7,8 @@
   <meta name="description" content="Monitor de cotações DEPIX (Liquid) para USDG (Ethereum, Solana, Robinhood) via SideShift" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="stylesheet" href="style.css" />
+  <!-- Calculadora (estilos isolados em #calculator-section) -->
+  <link rel="stylesheet" href="calculator.css" />
   <!-- Chart.js via CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/date-fns@3.6.0/cdn.min.js"></script>
@@ -121,6 +123,190 @@
       </div>
     </div>
 
+    <!-- Calculadora de Transação / Comparador de Cotações (independente do monitor) -->
+    <!-- Ativos, redes e provedores são preenchidos via calculator-catalog.js -->
+    <section id="calculator-section" aria-labelledby="calc-title">
+      <div class="calc-header">
+        <div>
+          <h2 class="calc-title" id="calc-title">🧮 Calculadora / Comparador de Cotações</h2>
+          <div class="calc-subtitle">Cálculo local da cotação efetiva · nenhuma transação é executada</div>
+        </div>
+        <span class="calc-tag">Cálculo local</span>
+      </div>
+
+      <p class="calc-unavailable" id="calc-unavailable" hidden>Calculadora indisponível no momento.</p>
+
+      <!-- Cotações atuais — SideShift (somente leitura do monitor) -->
+      <div class="calc-sideshift-section">
+        <div class="calc-sideshift-header">
+          <div>
+            <h3 class="calc-sideshift-title">Cotações atuais — SideShift</h3>
+            <div class="calc-sideshift-subtitle" id="calc-quotes-status">Consultando cotações...</div>
+          </div>
+          <button type="button" class="calc-btn calc-btn-secondary calc-btn-sm" id="calc-refresh-quotes" title="Atualizar cotações do monitor">
+            <span class="calc-btn-icon">🔄</span> Atualizar cotações
+          </button>
+        </div>
+        <div class="calc-sideshift-grid" id="calc-sideshift-cards">
+          <!-- Renderizado dinamicamente via calculator.js para Ethereum, Solana e Robinhood -->
+          <div class="calc-side-card calc-card-loading">
+            <div class="calc-card-net">Ethereum</div>
+            <div class="calc-card-val">Consultando...</div>
+          </div>
+          <div class="calc-side-card calc-card-loading">
+            <div class="calc-card-net">Solana</div>
+            <div class="calc-card-val">Consultando...</div>
+          </div>
+          <div class="calc-side-card calc-card-loading">
+            <div class="calc-card-net">Robinhood</div>
+            <div class="calc-card-val">Consultando...</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="calc-layout" id="calc-layout">
+        <form class="calc-form" id="calc-form" novalidate autocomplete="off">
+          <!-- Seleção de Envio (Ativo e Rede) -->
+          <div class="calc-form-group">
+            <span class="calc-group-label" id="calc-send-label">Envio</span>
+            <div class="calc-row">
+              <div class="calc-field-col">
+                <span class="calc-field-sublabel">Ativo</span>
+                <select class="calc-select" id="calc-send-asset" aria-labelledby="calc-send-label" aria-label="Ativo de envio"></select>
+              </div>
+              <div class="calc-field-col">
+                <span class="calc-field-sublabel">Rede</span>
+                <select class="calc-select" id="calc-send-network" aria-label="Rede de envio"></select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Seleção de Recebimento (Ativo e Rede) -->
+          <div class="calc-form-group">
+            <span class="calc-group-label" id="calc-receive-label">Recebimento</span>
+            <div class="calc-row">
+              <div class="calc-field-col">
+                <span class="calc-field-sublabel">Ativo</span>
+                <select class="calc-select" id="calc-receive-asset" aria-label="Ativo de recebimento"></select>
+              </div>
+              <div class="calc-field-col">
+                <span class="calc-field-sublabel">Rede</span>
+                <select class="calc-select" id="calc-receive-network" aria-label="Rede de recebimento"></select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Seleção de Provedor -->
+          <div class="calc-form-group">
+            <label class="calc-group-label" for="calc-provider">Provedor</label>
+            <div class="calc-row calc-row-single">
+              <div class="calc-field-col">
+                <select class="calc-select" id="calc-provider"></select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Avisos dinâmicos de rota e modo de operação -->
+          <div class="calc-notice calc-notice-warn" id="calc-route-msg" role="status" aria-live="polite" hidden></div>
+          <div class="calc-notice calc-notice-info" id="calc-mode-note" hidden></div>
+
+          <!-- Bloco de entrada manual (ex: Puro Swap) -->
+          <div class="calc-manual-box" id="calc-manual-box">
+            <div class="calc-manual-header">
+              <span class="calc-manual-title">Cotação Manual</span>
+              <span class="calc-badge-manual">MANUAL</span>
+            </div>
+            <p class="calc-manual-desc" id="calc-manual-desc">
+              Informe os valores recebidos para calcular a taxa efetiva e comparar com o monitor:
+            </p>
+
+            <div class="calc-row">
+              <div class="calc-form-group calc-field-col">
+                <label class="calc-group-label" for="calc-sent-amount">Valor enviado</label>
+                <div class="calc-input-wrap">
+                  <input class="calc-input" id="calc-sent-amount" type="text" inputmode="decimal" placeholder="350,00" aria-describedby="calc-sent-msg" />
+                  <span class="calc-unit" id="calc-sent-unit"></span>
+                </div>
+                <div class="calc-field-msg" id="calc-sent-msg" aria-live="polite"></div>
+              </div>
+
+              <div class="calc-form-group calc-field-col">
+                <label class="calc-group-label" for="calc-received-amount">Valor recebido</label>
+                <div class="calc-input-wrap">
+                  <input class="calc-input" id="calc-received-amount" type="text" inputmode="decimal" placeholder="66,54" aria-describedby="calc-received-msg" />
+                  <span class="calc-unit" id="calc-received-unit"></span>
+                </div>
+                <div class="calc-field-msg" id="calc-received-msg" aria-live="polite"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="calc-actions">
+            <button type="submit" class="calc-btn calc-btn-primary" id="calc-submit">Calcular</button>
+            <button type="button" class="calc-btn calc-btn-secondary" id="calc-clear">Limpar</button>
+          </div>
+        </form>
+
+        <div class="calc-result" id="calc-result" aria-live="polite">
+          <div class="calc-result-empty" id="calc-result-empty">
+            <span class="calc-empty-icon">🧮</span>
+            Informe os valores e clique em <strong>Calcular</strong>.
+          </div>
+          <div class="calc-result-body" id="calc-result-body" hidden>
+            <div class="calc-context" id="calc-context"></div>
+            <div>
+              <div class="calc-metric-label">Cotação efetiva</div>
+              <div class="calc-metric-main">
+                <span id="calc-rate-value">—</span><span class="calc-metric-unit" id="calc-rate-unit"></span>
+              </div>
+            </div>
+            <div class="calc-divider"></div>
+            <div class="calc-metric-grid">
+              <div class="calc-metric-box calc-real">
+                <div class="calc-metric-label">Valor informado</div>
+                <div class="calc-metric-value" id="calc-real-value">—</div>
+                <div class="calc-metric-hint">Valores reais da transação</div>
+              </div>
+              <div class="calc-metric-box">
+                <div class="calc-metric-label">Referência</div>
+                <div class="calc-metric-value" id="calc-normalized-value">—</div>
+                <div class="calc-metric-hint">Proporcional · não é garantia</div>
+              </div>
+            </div>
+            <p class="calc-disclaimer" id="calc-disclaimer"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Área de Comparação & Ranking com SideShift (Largura total, todas as colunas visíveis sem barra de rolagem) -->
+      <div class="calc-comparison-section" id="calc-comparison-section" hidden>
+        <div class="calc-comparison-header">
+          <div>
+            <h4 class="calc-comparison-title">📊 Comparativo de Cotações</h4>
+            <div class="calc-comparison-subtitle" id="calc-comparison-subtitle">Comparando para o mesmo valor enviado</div>
+          </div>
+          <div class="calc-best-badge" id="calc-best-badge" hidden></div>
+        </div>
+        <div class="calc-table-wrap">
+          <table class="calc-table">
+            <thead>
+              <tr>
+                <th>Ranking</th>
+                <th>Provedor / Rede</th>
+                <th>Recebido</th>
+                <th>Ref. 1.000</th>
+                <th>Diferença</th>
+                <th>Horário</th>
+              </tr>
+            </thead>
+            <tbody id="calc-comparison-tbody">
+            </tbody>
+          </table>
+        </div>
+        <div class="calc-comparison-note" id="calc-comparison-note" hidden></div>
+      </div>
+    </section>
+
   </div>
 </main>
 
@@ -141,5 +327,9 @@
 </div>
 
 <script src="app.js"></script>
+<!-- Calculadora — módulos isolados (não dependem do app.js) -->
+<script src="calculator-catalog.js"></script>
+<script src="calculator-core.js"></script>
+<script src="calculator.js"></script>
 </body>
 </html>
